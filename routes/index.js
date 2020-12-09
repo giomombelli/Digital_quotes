@@ -1,7 +1,7 @@
 const express = require("express");
 const admin = require("firebase-admin");
+const firebase = require("firebase");
 const serviceAccount = require("../serviceAccount.json");
-
 const router = express.Router();
 
 quotes = [];
@@ -12,15 +12,47 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+const firebaseConfig = {
+        apiKey: "AIzaSyBs5Nx43kwUMlGbGiX1O9dkdXFl2FBz-no",
+        authDomain: "digital-quote-a9684.firebaseapp.com",
+        projectId: "digital-quote-a9684",
+        storageBucket: "digital-quote-a9684.appspot.com",
+        messagingSenderId: "881872577842",
+        appId: "1:881872577842:web:5a3cf8c09326372dd1632b"
+}
+
+firebase.initializeApp(firebaseConfig);
+
 function genId() {
     return quotes.length > 0 ? Math.max(...quotes.map(quote => quote.id)) + 1 : 1
-}
+};
 
 async function updateQuotes() {
     quotes.length = 0;
     const list = await db.collection("quotes").get();
     list.forEach(doc => quotes.push(doc.data()));
-}
+};
+
+let aut = false;
+
+router.post("/login", async (req,res) => {
+    try {
+        if (!req.body.email){
+            return res.status(400).json({message: "Pass a valid username"});
+        };
+        if (!req.body.password){
+            return res.status(400).json({message: "Pass a valid password"});
+        };
+        const user = await firebase.auth().signInWithEmailAndPassword(req.body.email, req.body.password);
+        const token = await user.user.getIdToken();
+        aut = true;
+        return res.status(201).json({token});
+    } catch (err) {
+        console.log(err);
+        return res.status(500).send(err);
+    }
+    
+});
 
 router.get("/quotes", async (req, res) => {
     try {
@@ -45,6 +77,10 @@ router.get("/quotes/:id", async (req, res) => {
 
 router.post("/quotes", async (req, res) => {
     try {
+        if (aut == false){
+            return res.status(401).json({message: "You are not logged in"});    
+        }
+
         await updateQuotes();
         if (!req.body.author || !req.body.quote) {
             return res.status(400).json({message: "Bad request: missing quote or author in the request body!"});
@@ -64,6 +100,10 @@ router.post("/quotes", async (req, res) => {
 
 router.patch("/quotes/:id", async (req, res) => {
     try {
+        if (aut == false){
+            return res.status(401).json({message: "You are not logged in"});
+        }
+
         quotes.length = 0;
         const list = await db.collection("quotes").get();
         list.forEach(doc => quotes.push(doc.data()));
@@ -91,7 +131,6 @@ router.patch("/quotes/:id", async (req, res) => {
             db.collection("quotes").doc(req.params.id).set({author: req.body.author}, {merge: true});
             return res.json({message: "Updated"});
         }
-
     } catch (error) {
         return res.status(500).send(error);
     }
@@ -99,7 +138,9 @@ router.patch("/quotes/:id", async (req, res) => {
 
 router.delete("/quotes/:id", async (req, res) => {
     try {
-
+        if (aut == false){
+            return res.status(401).json({message: "You are not logged in"});
+        }
         const q = await db.collection('quotes').doc(req.params.id).get();
         if (!q.data()) {
             return res.status(404).json({message: "quote not found"});
@@ -114,5 +155,11 @@ router.delete("/quotes/:id", async (req, res) => {
         return res.status(500).send(error);
     }
 });
+
+router.get("/logout", (req,res) => {
+    user = firebase.auth().signOut();
+    aut = false;
+    return res.status(200).json({message: "logout"});
+})
 
 module.exports = router;
